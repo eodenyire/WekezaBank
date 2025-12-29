@@ -1,98 +1,226 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database (shared by all services)
+  # PostgreSQL Database - Core data storage
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
     container_name: risk_postgres
     environment:
       POSTGRES_DB: risk_management
       POSTGRES_USER: risk_user
       POSTGRES_PASSWORD: risk_password
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+      POSTGRES_MULTIPLE_DATABASES: ballerine,ciso_assistant,tazama
     ports:
       - "5432:5432"
-    networks:
-      - risk_network
-
-  # CISO Assistant (Risk Register & GRC)
-  ciso-assistant:
-    image: ghcr.io/intuitem/ciso-assistant-community/backend:latest
-    container_name: ciso_assistant
-    environment:
-      - DB_NAME=ciso_db
-      - DB_USER=risk_user
-      - DB_PASSWORD=risk_password
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DJANGO_SECRET_KEY=your-secret-key-change-this
-      - DEBUG=False
-    ports:
-      - "8000:8000"
-    depends_on:
-      - postgres
-    networks:
-      - risk_network
     volumes:
-      - ciso_data:/app/db
-
-  # CISO Assistant Frontend
-  ciso-frontend:
-    image: ghcr.io/intuitem/ciso-assistant-community/frontend:latest
-    container_name: ciso_frontend
-    environment:
-      - PUBLIC_BACKEND_API_URL=http://localhost:8000/api
-    ports:
-      - "8443:3000"
-    depends_on:
-      - ciso-assistant
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/01-init-db.sql
+      - ./init-multiple-db.sh:/docker-entrypoint-initdb.d/02-init-multiple-db.sh
+    restart: unless-stopped
     networks:
       - risk_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U risk_user -d risk_management"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Redis for caching and queues
+  # Redis - Caching and session management
   redis:
     image: redis:7-alpine
     container_name: risk_redis
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
     networks:
       - risk_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Ballerine Backend (Transaction Monitoring)
+  # Ballerine - Transaction Monitoring and Case Management
   ballerine-backend:
-    image: ballerine/backend:latest
+    image: ballerine/backend-community:latest
     container_name: ballerine_backend
     environment:
-      - DATABASE_URL=postgresql://risk_user:risk_password@postgres:5432/ballerine_db
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://risk_user:risk_password@postgres:5432/ballerine
       - REDIS_URL=redis://redis:6379
-      - JWT_SECRET_KEY=your-jwt-secret-change-this
+      - JWT_SECRET_KEY=your-jwt-secret-key-here
+      - BCRYPT_SALT=10
+      - SESSION_SECRET=your-session-secret-here
+      - API_KEY=your-api-key-here
     ports:
       - "3000:3000"
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
     networks:
       - risk_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Ballerine Frontend (Case Management Dashboard)
+  # Ballerine Frontend
   ballerine-frontend:
-    image: ballerine/backoffice:latest
+    image: ballerine/backoffice-community:latest
     container_name: ballerine_frontend
     environment:
       - VITE_API_URL=http://localhost:3000
+      - VITE_KYB_EXAMPLE_DOCS=true
+      - VITE_KYC_EXAMPLE_DOCS=true
     ports:
       - "5173:5173"
     depends_on:
-      - ballerine-backend
+      ballerine-backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - risk_network
+
+  # CISO Assistant - Enterprise Risk Register and GRC
+  ciso-assistant:
+    image: ghcr.io/intuitem/ciso-assistant-community/ciso-assistant:latest
+    container_name: ciso_assistant
+    environment:
+      - DJANGO_DEBUG=False
+      - DATABASE_URL=postgresql://risk_user:risk_password@postgres:5432/ciso_assistant
+      - DJANGO_SECRET_KEY=your-ciso-secret-key-here
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,ciso-assistant
+      - CSRF_TRUSTED_ORIGINS=https://localhost:8443,http://localhost:8443
+    ports:
+      - "8443:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - risk_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Tazama - Real-time Fraud Detection
+  tazama-processor:
+    image: tazama/transaction-monitoring-service:latest
+    container_name: tazama_processor
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://risk_user:risk_password@postgres:5432/tazama
+      - REDIS_URL=redis://redis:6379
+      - NATS_URL=nats://nats:4222
+      - LOG_LEVEL=info
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - risk_network
+
+  # NATS - Message broker for Tazama
+  nats:
+    image: nats:2.10-alpine
+    container_name: tazama_nats
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["--jetstream", "--store_dir", "/data"]
+    volumes:
+      - nats_data:/data
+    restart: unless-stopped
+    networks:
+      - risk_network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Risk Engine - Our custom Python application
+  risk-engine:
+    build:
+      context: ../
+      dockerfile: infrastructure/Dockerfile.risk-engine
+    container_name: equity_risk_engine
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=risk_management
+      - DB_USER=risk_user
+      - DB_PASSWORD=risk_password
+      - REDIS_URL=redis://redis:6379
+      - BALLERINE_API_URL=http://ballerine-backend:3000/api/v1
+      - CISO_API_URL=http://ciso-assistant:8000/api
+      - TAZAMA_API_URL=http://tazama-processor:4000/api
+      - HIGH_RISK_THRESHOLD=0.8
+      - MEDIUM_RISK_THRESHOLD=0.5
+      - POLLING_INTERVAL_SECONDS=30
+      - BATCH_SIZE=100
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ballerine-backend:
+        condition: service_healthy
+      ciso-assistant:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - risk_network
+    volumes:
+      - ../risk_engine:/app/risk_engine
+      - risk_logs:/app/logs
+
+  # Streamlit Dashboard
+  dashboard:
+    build:
+      context: ../
+      dockerfile: infrastructure/Dockerfile.dashboard
+    container_name: equity_dashboard
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=risk_management
+      - DB_USER=risk_user
+      - DB_PASSWORD=risk_password
+    ports:
+      - "8501:8501"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      risk-engine:
+        condition: service_started
+    restart: unless-stopped
     networks:
       - risk_network
 
 volumes:
   postgres_data:
-  ciso_data:
+  redis_data:
+  nats_data:
+  risk_logs:
 
 networks:
   risk_network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

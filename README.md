@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🛡️ Equity Bank Risk Management System
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -357,3 +358,6 @@ For support and questions:
 **Built with ❤️ for financial institutions worldwide**
 
 *Empowering banks and financial institutions with intelligent risk management*
+=======
+# WekezaBank
+>>>>>>> d3e937ace44ea2fcc3f7a3ba679cd3cf7f7452d2

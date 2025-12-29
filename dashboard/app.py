@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import sqlite3
+import psycopg2
 from datetime import datetime, timedelta
 import sys
 import os
@@ -63,13 +64,24 @@ def load_analyst_cases():
 def load_risk_metrics():
     """Load risk metrics from database"""
     try:
-        query = """
-        SELECT metric_type, metric_name, metric_value, threshold_value, 
-               status, calculated_at
-        FROM risk_metrics 
-        WHERE date(calculated_at) >= date('now', '-7 days')
-        ORDER BY calculated_at DESC
-        """
+        if config.is_production:
+            # PostgreSQL syntax
+            query = """
+            SELECT metric_type, metric_name, metric_value, threshold_value, 
+                   status, calculated_at
+            FROM risk_metrics 
+            WHERE calculated_at >= CURRENT_DATE - INTERVAL '7 days'
+            ORDER BY calculated_at DESC
+            """
+        else:
+            # SQLite syntax
+            query = """
+            SELECT metric_type, metric_name, metric_value, threshold_value, 
+                   status, calculated_at
+            FROM risk_metrics 
+            WHERE date(calculated_at) >= date('now', '-7 days')
+            ORDER BY calculated_at DESC
+            """
         return pd.read_sql(query, db.engine)
     except Exception as e:
         st.error(f"Error loading risk metrics: {e}")
@@ -78,14 +90,26 @@ def load_risk_metrics():
 def load_transaction_history():
     """Load recent transaction history"""
     try:
-        query = """
-        SELECT transaction_id, customer_id, amount, transaction_type,
-               merchant_name, location, channel, timestamp, status
-        FROM transaction_history 
-        WHERE date(timestamp) >= date('now', '-7 days')
-        ORDER BY timestamp DESC
-        LIMIT 1000
-        """
+        if config.is_production:
+            # PostgreSQL syntax
+            query = """
+            SELECT transaction_id, customer_id, amount, transaction_type,
+                   merchant_name, location, channel, timestamp, status
+            FROM transaction_history 
+            WHERE timestamp >= CURRENT_DATE - INTERVAL '7 days'
+            ORDER BY timestamp DESC
+            LIMIT 1000
+            """
+        else:
+            # SQLite syntax
+            query = """
+            SELECT transaction_id, customer_id, amount, transaction_type,
+                   merchant_name, location, channel, timestamp, status
+            FROM transaction_history 
+            WHERE date(timestamp) >= date('now', '-7 days')
+            ORDER BY timestamp DESC
+            LIMIT 1000
+            """
         return pd.read_sql(query, db.engine)
     except Exception as e:
         st.error(f"Error loading transaction history: {e}")
@@ -96,11 +120,22 @@ def update_case_status(case_id, new_status, comment):
     try:
         conn = db.get_connection()
         cur = conn.cursor()
-        cur.execute("""
-            UPDATE analyst_cases 
-            SET status = ?, analyst_comment = ?, updated_at = ?
-            WHERE case_id = ?
-        """, (new_status, comment, datetime.now(), case_id))
+        
+        if config.is_production:
+            # PostgreSQL syntax
+            cur.execute("""
+                UPDATE analyst_cases 
+                SET status = %s, analyst_comment = %s, updated_at = %s
+                WHERE case_id = %s
+            """, (new_status, comment, datetime.now(), case_id))
+        else:
+            # SQLite syntax
+            cur.execute("""
+                UPDATE analyst_cases 
+                SET status = ?, analyst_comment = ?, updated_at = ?
+                WHERE case_id = ?
+            """, (new_status, comment, datetime.now(), case_id))
+        
         conn.commit()
         conn.close()
         return True
