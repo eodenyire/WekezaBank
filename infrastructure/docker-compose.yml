@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database (shared by all services)
+  postgres:
+    image: postgres:15
+    container_name: risk_postgres
+    environment:
+      POSTGRES_DB: risk_management
+      POSTGRES_USER: risk_user
+      POSTGRES_PASSWORD: risk_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - risk_network
+
+  # CISO Assistant (Risk Register & GRC)
+  ciso-assistant:
+    image: ghcr.io/intuitem/ciso-assistant-community/backend:latest
+    container_name: ciso_assistant
+    environment:
+      - DB_NAME=ciso_db
+      - DB_USER=risk_user
+      - DB_PASSWORD=risk_password
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DJANGO_SECRET_KEY=your-secret-key-change-this
+      - DEBUG=False
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+    networks:
+      - risk_network
+    volumes:
+      - ciso_data:/app/db
+
+  # CISO Assistant Frontend
+  ciso-frontend:
+    image: ghcr.io/intuitem/ciso-assistant-community/frontend:latest
+    container_name: ciso_frontend
+    environment:
+      - PUBLIC_BACKEND_API_URL=http://localhost:8000/api
+    ports:
+      - "8443:3000"
+    depends_on:
+      - ciso-assistant
+    networks:
+      - risk_network
+
+  # Redis for caching and queues
+  redis:
+    image: redis:7-alpine
+    container_name: risk_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - risk_network
+
+  # Ballerine Backend (Transaction Monitoring)
+  ballerine-backend:
+    image: ballerine/backend:latest
+    container_name: ballerine_backend
+    environment:
+      - DATABASE_URL=postgresql://risk_user:risk_password@postgres:5432/ballerine_db
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET_KEY=your-jwt-secret-change-this
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - risk_network
+
+  # Ballerine Frontend (Case Management Dashboard)
+  ballerine-frontend:
+    image: ballerine/backoffice:latest
+    container_name: ballerine_frontend
+    environment:
+      - VITE_API_URL=http://localhost:3000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - ballerine-backend
+    networks:
+      - risk_network
+
+volumes:
+  postgres_data:
+  ciso_data:
+
+networks:
+  risk_network:
+    driver: bridge
