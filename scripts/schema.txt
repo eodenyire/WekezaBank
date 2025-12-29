@@ -1,0 +1,60 @@
+PS F:\Advanced Data Analytics\equity-risk-system> python check_sqlite.py
+📂 SQLite Database: transactions_db
+📋 Found 4 tables:
+
+🔹 Table: analyst_cases
+   Columns:
+   - case_id: INTEGER PK
+   - transaction_id: VARCHAR(50)
+   - customer_id: VARCHAR(50)
+   - amount: DECIMAL(15,2)
+   - currency: VARCHAR(3)
+   - merchant_name: VARCHAR(255)
+   - transaction_type: VARCHAR(50)
+   - risk_score: FLOAT
+   - risk_level: VARCHAR(20)
+   - status: VARCHAR(20)
+   - analyst_id: VARCHAR(50)
+   - analyst_comment: TEXT
+   - flagged_reason: TEXT
+   - created_at: TIMESTAMP
+   - updated_at: TIMESTAMP
+   - closed_at: TIMESTAMP
+   📊 Rows: 230
+
+🔹 Table: sqlite_sequence
+   Columns:
+   - name:
+   - seq:
+   📊 Rows: 3
+
+🔹 Table: risk_metrics
+   Columns:
+   - metric_id: INTEGER PK
+   - metric_type: VARCHAR(50)
+   - metric_name: VARCHAR(100)
+   - metric_value: DECIMAL(15,4)
+   - threshold_value: DECIMAL(15,4)
+   - status: VARCHAR(20)
+   - calculated_at: TIMESTAMP
+   📊 Rows: 24
+
+🔹 Table: transaction_history
+   Columns:
+   - id: INTEGER PK
+   - transaction_id: VARCHAR(50)
+   - customer_id: VARCHAR(50)
+   - account_number: VARCHAR(20)
+   - amount: DECIMAL(15,2)
+   - currency: VARCHAR(3)
+   - transaction_type: VARCHAR(50)
+   - merchant_name: VARCHAR(255)
+   - merchant_category: VARCHAR(100)
+   - location: VARCHAR(100)
+   - channel: VARCHAR(50)
+   - timestamp: TIMESTAMP
+   - status: VARCHAR(20)
+   📊 Rows: 411680
+
+✅ Database analysis complete!
+PS F:\Advanced Data Analytics\equity-risk-system> 
