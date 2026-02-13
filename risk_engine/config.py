@@ -4,18 +4,23 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    # Database Configuration (SQLite for local development)
+    # Database Configuration (PostgreSQL for production)
     DB_HOST = os.getenv('DB_HOST', 'localhost')
     DB_PORT = int(os.getenv('DB_PORT', 5432))
-    DB_NAME = os.getenv('DB_NAME', 'risk_management.db')
+    DB_NAME = os.getenv('DB_NAME', 'risk_management')
     DB_USER = os.getenv('DB_USER', 'risk_user')
     DB_PASSWORD = os.getenv('DB_PASSWORD', 'risk_password')
+    
+    # Redis Configuration
+    REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
     
     # API Configuration
     BALLERINE_API_URL = os.getenv('BALLERINE_API_URL', 'http://localhost:3000/api/v1')
     BALLERINE_API_KEY = os.getenv('BALLERINE_API_KEY', '')
     CISO_API_URL = os.getenv('CISO_API_URL', 'http://localhost:8000/api')
     CISO_API_TOKEN = os.getenv('CISO_API_TOKEN', '')
+    TAZAMA_API_URL = os.getenv('TAZAMA_API_URL', 'http://localhost:4000/api')
+    TAZAMA_API_KEY = os.getenv('TAZAMA_API_KEY', '')
     
     # Risk Thresholds
     HIGH_RISK_THRESHOLD = float(os.getenv('HIGH_RISK_THRESHOLD', 0.8))
@@ -27,7 +32,18 @@ class Config:
     POLLING_INTERVAL_SECONDS = int(os.getenv('POLLING_INTERVAL_SECONDS', 30))
     BATCH_SIZE = int(os.getenv('BATCH_SIZE', 100))
     
+    # Environment
+    ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+    
     @property
     def database_url(self):
-        # Use SQLite for local development
-        return f"sqlite:///{self.DB_NAME}"
+        # Use PostgreSQL for production
+        if self.ENVIRONMENT == 'production' or self.DB_HOST != 'localhost':
+            return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+        else:
+            # Fallback to SQLite for local development
+            return f"sqlite:///{self.DB_NAME}.db"
+    
+    @property
+    def is_production(self):
+        return self.ENVIRONMENT == 'production' or self.DB_HOST != 'localhost'

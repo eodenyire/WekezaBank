@@ -7,3 +7,5 @@ schedule==1.2.0
 streamlit==1.29.0
 plotly==5.17.0
 sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+redis==5.0.1
